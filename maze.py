@@ -1,23 +1,15 @@
 import pygame
-import sys
+import cv2
+import threading
+import time
+import numpy as np
+from collections import deque
+from keras.models import load_model
 
-# Initialize Pygame
-pygame.init()
+# === Load your trained model here ===
+# model = load_model('your_model_path.h5')  # Uncomment and use actual model
 
-# Screen settings
-WIDTH, HEIGHT = 600, 600
-TILE_SIZE = 40
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Maze Game")
-
-# Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-BLUE  = (0, 0, 255)
-GREEN = (0, 255, 0)
-
-# Maze layout: 1 = wall, 0 = path, G = goal
-
+# === Maze Setup ===
 maze = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
     [1,0,1,0,0,0,0,1,0,0,0,1,0,0,1],
@@ -32,56 +24,111 @@ maze = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ]
 
-# Player
-player_pos = [1, 1]  # Row, Col
+# === Game Initialization ===
+pygame.init()
+WIDTH, HEIGHT = 600, 600
+win = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Emotion-Controlled Maze")
+cell_size = WIDTH // len(maze[0])
+player_pos = [1, 1]  # Starting position
 
+# Colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+BLUE  = (0, 0, 255)
+GREEN = (0, 255, 0)
+
+# === Emotion Detection Setup ===
+current_emotion = "neutral"
+emotion_queue = deque(maxlen=5)
+emotion_labels = ['angry', 'happy', 'neutral', 'sad', 'surprise']  # Adjust based on your model
+
+def get_smoothed_emotion(new_emotion):
+    emotion_queue.append(new_emotion)
+    return max(set(emotion_queue), key=emotion_queue.count)
+
+def detect_emotion():
+    global current_emotion
+    cap = cv2.VideoCapture(0)
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            continue
+
+        gray = cv2.cvtColor(cv2.resize(frame, (48, 48)), cv2.COLOR_BGR2GRAY)
+        face = gray.astype("float32") / 255.0
+        face = np.expand_dims(face, axis=-1)
+        face = np.expand_dims(face, axis=0)
+
+        # === Your actual model prediction code ===
+        # predictions = model.predict(face)
+        # emotion_index = np.argmax(predictions)
+        # confidence = np.max(predictions)
+        # if confidence > 0.7:
+        #     detected_emotion = emotion_labels[emotion_index]
+        # else:
+        #     detected_emotion = "neutral"
+
+        # === Simulated prediction for testing ===
+        detected_emotion = np.random.choice(emotion_labels)
+
+        current_emotion = get_smoothed_emotion(detected_emotion)
+        print("Detected (smoothed):", current_emotion)
+
+        time.sleep(0.8)
+
+# Start emotion detection in background thread
+threading.Thread(target=detect_emotion, daemon=True).start()
+
+# === Game Drawing Function ===
 def draw_maze():
-    screen.fill(BLACK)
-    for row in range(len(maze)):
-        for col in range(len(maze[0])):
-            x = col * TILE_SIZE
-            y = row * TILE_SIZE
-            if maze[row][col] == 1:
-                pygame.draw.rect(screen, WHITE, (x, y, TILE_SIZE, TILE_SIZE))
-            elif maze[row][col] == 'G':
-                pygame.draw.rect(screen, GREEN, (x, y, TILE_SIZE, TILE_SIZE))
+    win.fill(BLACK)
+    for i, row in enumerate(maze):
+        for j, val in enumerate(row):
+            rect = pygame.Rect(j * cell_size, i * cell_size, cell_size, cell_size)
+            if val == 1:
+                pygame.draw.rect(win, BLACK, rect)
+            elif val == 0:
+                pygame.draw.rect(win, WHITE, rect)
+            elif val == 'G':
+                pygame.draw.rect(win, GREEN, rect)
+    pygame.draw.rect(win, BLUE, (player_pos[1]*cell_size, player_pos[0]*cell_size, cell_size, cell_size))
+    pygame.display.update()
 
-    # Draw player
-    px, py = player_pos[1] * TILE_SIZE, player_pos[0] * TILE_SIZE
-    pygame.draw.rect(screen, BLUE, (px, py, TILE_SIZE, TILE_SIZE))
+# === Movement Control ===
+def move_player(emotion):
+    x, y = player_pos
+    if emotion == "surprise" and y+1 < len(maze[0]) and maze[x][y+1] != 1: #right
+        player_pos[1] += 1
+    elif emotion == "angry" and y-1 >= 0 and maze[x][y-1] != 1: #left
+        player_pos[1] -= 1
+    elif emotion == "sad" and x-1 >= 0 and maze[x-1][y] != 1: #up
+        player_pos[0] -= 1
+    elif emotion == "happy" and x+1 < len(maze) and maze[x+1][y] != 1: #down
+        player_pos[0] += 1
 
-# Game loop
+# === Game Loop ===
 clock = pygame.time.Clock()
 running = True
-while running:
-    clock.tick(10)
-    draw_maze()
-    pygame.display.flip()
+last_move_time = time.time()
 
+while running:
+    draw_maze()
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-    # Player movement
-    keys = pygame.key.get_pressed()
-    new_pos = player_pos[:]
-    if keys[pygame.K_LEFT]:
-        new_pos[1] -= 1
-    elif keys[pygame.K_RIGHT]:
-        new_pos[1] += 1
-    elif keys[pygame.K_UP]:
-        new_pos[0] -= 1
-    elif keys[pygame.K_DOWN]:
-        new_pos[0] += 1
+    # Move every 1.2 seconds (cooldown)
+    if time.time() - last_move_time > 1.2:
+        move_player(current_emotion)
+        last_move_time = time.time()
 
-    if maze[new_pos[0]][new_pos[1]] != 1:
-        player_pos = new_pos
-
-    # Win condition
+    # Check for win
     if maze[player_pos[0]][player_pos[1]] == 'G':
         print("🎉 You reached the goal!")
-        pygame.time.delay(2000)
         running = False
 
+    clock.tick(30)
+
 pygame.quit()
-sys.exit()
