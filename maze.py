@@ -182,7 +182,7 @@ def draw_maze():
     instructions = [
         "Make exaggerated facial expressions:",
         "Happy = Down | Sad = Up | Angry = Left",
-        "Surprise = Right | Fear = Up-Right | Disgust = Up-Left"
+        "Surprise = Right"
     ]
     for i, line in enumerate(instructions):
         text = instruction_font.render(line, True, BLACK)
@@ -203,10 +203,6 @@ def move_player(emotion):
         new_x = x - 1
     elif emotion == "Happy":   # Down
         new_x = x + 1
-    elif emotion == "Disgust": # Up-Left
-        new_x, new_y = x - 1, y - 1
-    elif emotion == "Fear":    # Up-Right
-        new_x, new_y = x - 1, y + 1
     
     # Check bounds and walls
     if 0 <= new_x < len(maze) and 0 <= new_y < len(maze[0]):
